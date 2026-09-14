@@ -1,0 +1,637 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ AUTH / USERS / RBAC ============
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  isActive     Boolean  @default(true)
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  userRoles       UserRole[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  stockMovements  StockMovement[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  code        String   @unique // SUPER_ADMIN, ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_OPERATOR, INVENTORY_CONTROLLER, PURCHASING, SALES, AUDITOR, VIEWER
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id     String @id @default(uuid())
+  code   String @unique // e.g. products.view, stock.receive
+  module String // e.g. products, stock, warehouses
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ============ COMPANY / BRANCH ============
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  branches   Branch[]
+  warehouses Warehouse[]
+
+  @@map("companies")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+
+  users      User[]
+  warehouses Warehouse[]
+
+  @@map("branches")
+}
+
+// ============ WAREHOUSES / LOCATIONS ============
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  code      String   @unique
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  locations        WarehouseLocation[]
+  stockBalances     StockBalance[]
+  receipts          Receipt[]
+  issues            Issue[]
+  transfersFrom     Transfer[] @relation("TransferFromWarehouse")
+  transfersTo       Transfer[] @relation("TransferToWarehouse")
+  adjustments       StockAdjustment[]
+  counts            StockCount[]
+
+  @@map("warehouses")
+}
+
+model WarehouseLocation {
+  id          String    @id @default(uuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  code        String
+  name        String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  stockBalances StockBalance[]
+  movementsFrom StockMovement[] @relation("MovementFromLocation")
+  movementsTo   StockMovement[] @relation("MovementToLocation")
+
+  @@unique([warehouseId, code])
+  @@map("warehouse_locations")
+}
+
+// ============ PRODUCTS ============
+
+model ProductCategory {
+  id        String    @id @default(uuid())
+  name      String
+  parentId  String?
+  parent    ProductCategory? @relation("CategoryParent", fields: [parentId], references: [id])
+  children  ProductCategory[] @relation("CategoryParent")
+  createdAt DateTime  @default(now())
+
+  products Product[]
+
+  @@map("product_categories")
+}
+
+enum TrackingType {
+  NONE
+  LOT
+  SERIAL
+}
+
+model UnitOfMeasure {
+  id       String @id @default(uuid())
+  code     String @unique
+  name     String
+  products Product[]
+
+  @@map("units_of_measure")
+}
+
+model Product {
+  id             String       @id @default(uuid())
+  nameAr         String
+  nameEn         String
+  sku            String       @unique
+  barcode        String?      @unique
+  categoryId     String?
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+  brand          String?
+  description    String?
+  imageUrl       String?
+  cost           Decimal      @default(0) @db.Decimal(14, 4)
+  salePrice      Decimal      @default(0) @db.Decimal(14, 4)
+  purchasePrice  Decimal      @default(0) @db.Decimal(14, 4)
+  weight         Decimal?     @db.Decimal(10, 3)
+  volume         Decimal?     @db.Decimal(10, 3)
+  uomId          String
+  uom            UnitOfMeasure @relation(fields: [uomId], references: [id])
+  trackingType   TrackingType @default(NONE)
+  reorderPoint   Decimal      @default(0) @db.Decimal(14, 3)
+  minimumStock   Decimal      @default(0) @db.Decimal(14, 3)
+  maximumStock   Decimal?     @db.Decimal(14, 3)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  variants        ProductVariant[]
+  lots            Lot[]
+  serialNumbers   SerialNumber[]
+  stockBalances   StockBalance[]
+  stockMovements  StockMovement[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+model ProductVariant {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  sku        String   @unique
+  attributes Json     // e.g. { "size": "L", "color": "Red" }
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@map("product_variants")
+}
+
+// ============ LOTS / SERIALS ============
+
+model Lot {
+  id           String    @id @default(uuid())
+  productId    String
+  product      Product   @relation(fields: [productId], references: [id])
+  lotNumber    String
+  manufactureDate DateTime?
+  expiryDate   DateTime?
+  createdAt    DateTime  @default(now())
+
+  stockMovements StockMovement[]
+  stockBalances  StockBalance[]
+
+  @@unique([productId, lotNumber])
+  @@map("lots")
+}
+
+model SerialNumber {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  serial     String   @unique
+  status     String   @default("IN_STOCK") // IN_STOCK, ISSUED, RESERVED
+  createdAt  DateTime @default(now())
+
+  stockMovements StockMovement[]
+
+  @@map("serial_numbers")
+}
+
+// ============ STOCK ENGINE ============
+
+enum MovementType {
+  RECEIPT
+  ISSUE
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  COUNT_IN
+  COUNT_OUT
+  RETURN_IN
+  RETURN_OUT
+}
+
+model StockMovement {
+  id               String       @id @default(uuid())
+  reference        String
+  type             MovementType
+  date             DateTime     @default(now())
+  warehouseId      String
+  fromLocationId   String?
+  fromLocation     WarehouseLocation? @relation("MovementFromLocation", fields: [fromLocationId], references: [id])
+  toLocationId     String?
+  toLocation       WarehouseLocation? @relation("MovementToLocation", fields: [toLocationId], references: [id])
+  productId        String
+  product          Product      @relation(fields: [productId], references: [id])
+  quantity         Decimal      @db.Decimal(14, 3)
+  lotId            String?
+  lot              Lot?         @relation(fields: [lotId], references: [id])
+  serialNumberId   String?
+  serialNumber     SerialNumber? @relation(fields: [serialNumberId], references: [id])
+  sourceDocument   String       // e.g. "Receipt:<id>"
+  userId           String
+  user             User         @relation(fields: [userId], references: [id])
+  reason           String?
+  createdAt        DateTime     @default(now())
+
+  @@index([productId, warehouseId])
+  @@index([type])
+  @@map("stock_movements")
+}
+
+model StockBalance {
+  id          String    @id @default(uuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  locationId  String?
+  location    WarehouseLocation? @relation(fields: [locationId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  lotId       String?
+  lot         Lot?      @relation(fields: [lotId], references: [id])
+  onHand      Decimal   @default(0) @db.Decimal(14, 3)
+  reserved    Decimal   @default(0) @db.Decimal(14, 3)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([warehouseId, locationId, productId, lotId])
+  @@index([productId])
+  @@map("stock_balances")
+}
+
+// ============ RECEIPTS ============
+
+enum DocStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+model Receipt {
+  id          String    @id @default(uuid())
+  reference   String    @unique
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  locationId  String?
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  date        DateTime  @default(now())
+  status      DocStatus @default(DRAFT)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines ReceiptLine[]
+
+  @@map("receipts")
+}
+
+model ReceiptLine {
+  id         String   @id @default(uuid())
+  receiptId  String
+  receipt    Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  productId  String
+  quantity   Decimal  @db.Decimal(14, 3)
+  lotNumber  String?
+  expiryDate DateTime?
+  serials    String[] @default([])
+
+  @@map("receipt_lines")
+}
+
+// ============ ISSUES ============
+
+model Issue {
+  id          String    @id @default(uuid())
+  reference   String    @unique
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  locationId  String?
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  date        DateTime  @default(now())
+  status      DocStatus @default(DRAFT)
+  reason      String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines IssueLine[]
+
+  @@map("issues")
+}
+
+model IssueLine {
+  id        String  @id @default(uuid())
+  issueId   String
+  issue     Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  productId String
+  quantity  Decimal @db.Decimal(14, 3)
+  lotId     String?
+  serials   String[] @default([])
+
+  @@map("issue_lines")
+}
+
+// ============ TRANSFERS ============
+
+enum TransferStatus {
+  DRAFT
+  CONFIRMED
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+model Transfer {
+  id             String         @id @default(uuid())
+  reference      String         @unique
+  fromWarehouseId String
+  fromWarehouse  Warehouse      @relation("TransferFromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouseId  String
+  toWarehouse    Warehouse      @relation("TransferToWarehouse", fields: [toWarehouseId], references: [id])
+  fromLocationId String?
+  toLocationId   String?
+  date           DateTime       @default(now())
+  status         TransferStatus @default(DRAFT)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  lines TransferLine[]
+
+  @@map("transfers")
+}
+
+model TransferLine {
+  id         String   @id @default(uuid())
+  transferId String
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId  String
+  quantity   Decimal  @db.Decimal(14, 3)
+  lotId      String?
+
+  @@map("transfer_lines")
+}
+
+// ============ STOCK ADJUSTMENTS ============
+
+model StockAdjustment {
+  id          String    @id @default(uuid())
+  reference   String    @unique
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  locationId  String?
+  date        DateTime  @default(now())
+  status      DocStatus @default(DRAFT)
+  reason      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  lines StockAdjustmentLine[]
+
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentLine {
+  id              String          @id @default(uuid())
+  adjustmentId    String
+  adjustment      StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  productId       String
+  lotId           String?
+  systemQuantity  Decimal         @db.Decimal(14, 3)
+  countedQuantity Decimal         @db.Decimal(14, 3)
+  difference      Decimal         @db.Decimal(14, 3)
+
+  @@map("stock_adjustment_lines")
+}
+
+// ============ STOCK COUNTS ============
+
+enum CountStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model StockCount {
+  id          String      @id @default(uuid())
+  reference   String      @unique
+  warehouseId String
+  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id])
+  locationId  String?
+  categoryId  String?
+  date        DateTime    @default(now())
+  status      CountStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  lines StockCountLine[]
+
+  @@map("stock_counts")
+}
+
+model StockCountLine {
+  id            String     @id @default(uuid())
+  countId       String
+  count         StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  productId     String
+  lotId         String?
+  expectedQty   Decimal    @db.Decimal(14, 3)
+  countedQty    Decimal?   @db.Decimal(14, 3)
+  status        String     @default("PENDING") // PENDING, COUNTED
+
+  @@map("stock_count_lines")
+}
+
+// ============ PARTNERS (scaffolded) ============
+
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  receipts       Receipt[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  issues      Issue[]
+  salesOrders SalesOrder[]
+
+  @@map("customers")
+}
+
+// ============ PURCHASE / SALES ORDERS (scaffolded, not yet wired to stock) ============
+
+model PurchaseOrder {
+  id         String    @id @default(uuid())
+  reference  String    @unique
+  supplierId String
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  status     DocStatus @default(DRAFT)
+  date       DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  lines PurchaseOrderLine[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  quantity        Decimal       @db.Decimal(14, 3)
+  unitPrice       Decimal       @db.Decimal(14, 4)
+
+  @@map("purchase_order_lines")
+}
+
+model SalesOrder {
+  id         String    @id @default(uuid())
+  reference  String    @unique
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  status     DocStatus @default(DRAFT)
+  date       DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  lines SalesOrderLine[]
+
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id           String     @id @default(uuid())
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId    String
+  quantity     Decimal    @db.Decimal(14, 3)
+  unitPrice    Decimal    @db.Decimal(14, 4)
+
+  @@map("sales_order_lines")
+}
+
+// ============ NOTIFICATIONS / AUDIT / SETTINGS ============
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String   // CREATE, UPDATE, DELETE, CONFIRM, CANCEL
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value Json
+
+  @@map("system_settings")
+}
