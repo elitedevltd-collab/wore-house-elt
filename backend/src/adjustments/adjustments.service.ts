@@ -15,7 +15,13 @@ export class AdjustmentsService {
   async create(dto: CreateAdjustmentDto) {
     const reference = await this.generateReference();
 
-    const lines = [];
+    const lines: Array<{
+      productId: string;
+      lotId?: string;
+      systemQuantity: number;
+      countedQuantity: number;
+      difference: number;
+    }> = [];
     for (const line of dto.lines) {
       const systemQuantity = await this.stockService.getAvailable(
         dto.warehouseId,
