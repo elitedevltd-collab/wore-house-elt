@@ -24,7 +24,7 @@ export class CountsService {
       },
     });
 
-    const lines = [];
+    const lines: Array<{ productId: string; expectedQty: number }> = [];
     for (const product of products) {
       const expectedQty = await this.stockService.getAvailable(
         dto.warehouseId,
