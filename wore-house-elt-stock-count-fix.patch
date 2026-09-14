@@ -1,0 +1,235 @@
+From c9f92b185f844929543850ce5b8e3a2a9fabd6aa Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 14 Sep 2026 19:50:48 +0000
+Subject: [PATCH 1/2] Fix stock count DB provisioning and submit-line
+ validation
+
+- Dockerfile: switch startup command from `prisma migrate deploy` to
+  `prisma db push` + seed. No migration was ever committed under
+  backend/prisma/migrations, so `migrate deploy` was a silent no-op on
+  every fresh `docker compose up --build`, leaving Postgres with zero
+  tables and every API call failing with "relation does not exist".
+- counts DTO: `SubmitCountLineDto.countedQty` had no class-validator
+  decorator, so the global ValidationPipe (whitelist: true) silently
+  stripped it from every request body. Submitting a counted quantity
+  always persisted null, and the line stayed excluded from
+  CountsService.complete()'s adjustment logic despite being marked
+  COUNTED. Added @IsNumber/@Min(0).
+- counts.service: stock count reference numbers were generated from a
+  plain `count()+1`, which races under concurrent creates and can hit
+  the unique constraint on `reference`. Added a bounded retry on P2002
+  reference collisions instead of surfacing a 500.
+- README: quick-start no longer needs the manual `migrate dev`/`seed`
+  docker exec steps now that they run automatically on container start.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Pn3XFRShNYHEENnPN2cmcC
+---
+ README.md                            |  7 +----
+ backend/Dockerfile                   |  8 ++++-
+ backend/src/counts/counts.service.ts | 47 ++++++++++++++++++++--------
+ backend/src/counts/dto/count.dto.ts  |  9 +++++-
+ 4 files changed, 50 insertions(+), 21 deletions(-)
+
+diff --git a/README.md b/README.md
+index db9694c..27da6dc 100644
+--- a/README.md
++++ b/README.md
+@@ -14,12 +14,7 @@
+ docker compose up --build
+ ```
+ 
+-بعد ما الـ Containers تشتغل، افتح Terminal جديد ونفّذ الأوامر دي **مرة واحدة بس** لإنشاء الجداول وبيانات البداية:
+-
+-```bash
+-docker compose exec backend npx prisma migrate dev --name init
+-docker compose exec backend npm run prisma:seed
+-```
++كده بس. الباك اند بينشئ الجداول تلقائيًا (`prisma db push`) وبيعمل seed لبيانات البداية أول ما يشتغل (العملية دي آمنة تتكرر - upsert)، فمش محتاج تنفّذ أي أوامر يدوية بعد الـ up.
+ 
+ بعدها:
+ - **الفرونت اند:** http://localhost:5173
+diff --git a/backend/Dockerfile b/backend/Dockerfile
+index 356df15..5772e8e 100644
+--- a/backend/Dockerfile
++++ b/backend/Dockerfile
+@@ -11,4 +11,10 @@ RUN npm run build
+ 
+ EXPOSE 4000
+ 
+-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:prod"]
++# ملحوظة مهمة: المشروع ده لسه معندوش أي migration متسجل في backend/prisma/migrations
++# (المجلد أصلاً مش موجود في الريبو)، فـ "prisma migrate deploy" وحدها كانت
++# بترجع "No migration found" من غير ما تعمل حاجة، والداتابيز فاضية تمامًا،
++# فأي API call كان بيطيح بخطأ "relation does not exist". دلوقتي بنستخدم
++# "prisma db push" عشان تنشئ/تزامن الجداول من schema.prisma مباشرة أول ما
++# الكونتينر يشتغل، وبعدين تشغيل الـ seed (كله upsert فآمن يتنفذ كذا مرة).
++CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && npm run prisma:seed && npm run start:prod"]
+diff --git a/backend/src/counts/counts.service.ts b/backend/src/counts/counts.service.ts
+index 8a603b4..8f9c1b0 100644
+--- a/backend/src/counts/counts.service.ts
++++ b/backend/src/counts/counts.service.ts
+@@ -1,8 +1,12 @@
+ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
++import { Prisma } from '@prisma/client';
+ import { PrismaService } from '../prisma/prisma.service';
+ import { StockService } from '../stock/stock.service';
+ import { CreateStockCountDto } from './dto/count.dto';
+ 
++const UNIQUE_CONSTRAINT_VIOLATION = 'P2002';
++const MAX_REFERENCE_RETRIES = 5;
++
+ @Injectable()
+ export class CountsService {
+   constructor(private prisma: PrismaService, private stockService: StockService) {}
+@@ -13,8 +17,6 @@ export class CountsService {
+   }
+ 
+   async create(dto: CreateStockCountDto) {
+-    const reference = await this.generateReference();
+-
+     const products = await this.prisma.product.findMany({
+       where: {
+         isActive: true,
+@@ -34,17 +36,36 @@ export class CountsService {
+       lines.push({ productId: product.id, expectedQty });
+     }
+ 
+-    return this.prisma.stockCount.create({
+-      data: {
+-        reference,
+-        warehouseId: dto.warehouseId,
+-        locationId: dto.locationId,
+-        categoryId: dto.categoryId,
+-        status: 'IN_PROGRESS',
+-        lines: { create: lines },
+-      },
+-      include: { lines: { include: { product: true } } },
+-    });
++    // reference بتتحسب من عدد سجلات stock_counts الحالي (COUNT + 1)، ولو
++    // طلبين جو بنفس اللحظة (مثلاً دبل كليك أو مستخدمين مختلفين) ممكن الاتنين
++    // ياخدوا نفس الرقم ويصطدموا بـ unique constraint على reference. بنعيد
++    // المحاولة بمرجع جديد بدل ما نرمي خطأ 500 للمستخدم.
++    for (let attempt = 0; attempt < MAX_REFERENCE_RETRIES; attempt++) {
++      const reference = await this.generateReference();
++      try {
++        return await this.prisma.stockCount.create({
++          data: {
++            reference,
++            warehouseId: dto.warehouseId,
++            locationId: dto.locationId,
++            categoryId: dto.categoryId,
++            status: 'IN_PROGRESS',
++            lines: { create: lines },
++          },
++          include: { lines: { include: { product: true } } },
++        });
++      } catch (err) {
++        const isReferenceCollision =
++          err instanceof Prisma.PrismaClientKnownRequestError &&
++          err.code === UNIQUE_CONSTRAINT_VIOLATION &&
++          (err.meta?.target as string[] | undefined)?.includes('reference');
++        if (!isReferenceCollision || attempt === MAX_REFERENCE_RETRIES - 1) {
++          throw err;
++        }
++      }
++    }
++    // Unreachable — but keeps TypeScript happy about a guaranteed return.
++    throw new BadRequestException('تعذر إنشاء رقم مرجعي فريد للجرد - Could not generate a unique count reference');
+   }
+ 
+   async findAll() {
+diff --git a/backend/src/counts/dto/count.dto.ts b/backend/src/counts/dto/count.dto.ts
+index 16b1297..2680310 100644
+--- a/backend/src/counts/dto/count.dto.ts
++++ b/backend/src/counts/dto/count.dto.ts
+@@ -1,4 +1,4 @@
+-import { IsArray, IsOptional, IsString } from 'class-validator';
++import { ArrayNotEmpty, IsArray, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+ 
+ export class CreateStockCountDto {
+   @IsString()
+@@ -14,6 +14,8 @@ export class CreateStockCountDto {
+ 
+   @IsOptional()
+   @IsArray()
++  @ArrayNotEmpty()
++  @IsString({ each: true })
+   productIds?: string[];
+ }
+ 
+@@ -21,5 +23,10 @@ export class SubmitCountLineDto {
+   @IsString()
+   lineId: string;
+ 
++  // كانت من غير أي decorator، فـ ValidationPipe العام (whitelist: true) كان
++  // بيشيلها من الـ body قبل ما توصل للـ service خالص -> الكمية المجرودة
++  // كانت دايمًا بتتخزن null حتى لو المستخدم بعتها فعليًا.
++  @IsNumber()
++  @Min(0)
+   countedQty: number;
+ }
+-- 
+2.43.0
+
+
+From d8a32bd4a852a6e337ef770ce0fa99fed2953e83 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 14 Sep 2026 19:54:29 +0000
+Subject: [PATCH 2/2] Add .gitignore for node_modules/dist/env files
+
+The repo had no .gitignore at all, so a local npm install/build would
+show node_modules and dist as untracked instead of being ignored.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01Pn3XFRShNYHEENnPN2cmcC
+---
+ .gitignore | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+ create mode 100644 .gitignore
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..56a0079
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,36 @@
++# Dependencies
++node_modules/
++**/node_modules/
++
++# Build output
++dist/
++build/
++**/dist/
++**/build/
++
++# Environment files (never commit secrets)
++.env
++.env.local
++.env.*.local
++**/.env
++**/.env.local
++
++# Logs
++npm-debug.log*
++yarn-debug.log*
++yarn-error.log*
++*.log
++
++# Prisma
++**/prisma/dev.db
++**/prisma/dev.db-journal
++
++# OS / editor
++.DS_Store
++Thumbs.db
++.vscode/
++.idea/
++
++# Coverage / test output
++coverage/
++**/coverage/
+-- 
+2.43.0
+
