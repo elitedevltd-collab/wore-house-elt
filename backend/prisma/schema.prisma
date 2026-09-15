@@ -223,6 +223,8 @@ model Product {
   stockBalances   StockBalance[]
   stockMovements  StockMovement[]
   stockCountLines StockCountLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  salesOrderLines    SalesOrderLine[]
 
   @@index([categoryId])
   @@map("products")
@@ -580,6 +582,7 @@ model PurchaseOrderLine {
   purchaseOrderId String
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   productId       String
+  product         Product       @relation(fields: [productId], references: [id])
   quantity        Decimal       @db.Decimal(14, 3)
   unitPrice       Decimal       @db.Decimal(14, 4)
 
@@ -610,6 +613,7 @@ model SalesOrderLine {
   salesOrderId String
   salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
   productId    String
+  product      Product  @relation(fields: [productId], references: [id])
   quantity     Decimal    @db.Decimal(14, 3)
   unitPrice    Decimal    @db.Decimal(14, 4)
 
