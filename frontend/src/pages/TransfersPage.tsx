@@ -4,6 +4,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useUI } from '../context/UIContext';
 import { Table, Button, Modal, Field, inputClass, StatusBadge } from '../components/ui';
+import { ScanButton } from '../components/ScanButton';
+import { lookupBarcode, matchProductByCode } from '../lib/barcode';
 
 export function TransfersPage() {
   const { t, locale } = useUI();
@@ -38,6 +40,34 @@ export function TransfersPage() {
 
   function updateLine(i: number, patch: Partial<{ productId: string; quantity: number }>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+
+  function applyScannedProduct(productId: string) {
+    setLines((ls) => {
+      const emptyIdx = ls.findIndex((l) => !l.productId);
+      if (emptyIdx !== -1) {
+        return ls.map((l, idx) => (idx === emptyIdx ? { ...l, productId } : l));
+      }
+      const lastIdx = ls.length - 1;
+      if (ls[lastIdx]?.productId === productId) {
+        return ls.map((l, idx) => (idx === lastIdx ? { ...l, quantity: l.quantity + 1 } : l));
+      }
+      return [...ls, { productId, quantity: 1 }];
+    });
+  }
+
+  async function handleScan(code: string) {
+    const local = matchProductByCode(products, code);
+    if (local) {
+      applyScannedProduct(local.id);
+      return;
+    }
+    const result = await lookupBarcode(code).catch(() => null);
+    if (result?.type === 'product') {
+      applyScannedProduct(result.product.id);
+    } else {
+      alert(t(`الكود "${code}" مش متسجل لأي منتج`, `Code "${code}" does not match any product`));
+    }
   }
 
   return (
@@ -85,7 +115,15 @@ export function TransfersPage() {
             </Field>
           </div>
 
-          <div className="text-sm font-medium mt-4 mb-2">{t('الأصناف', 'Lines')}</div>
+          <div className="flex items-center justify-between mt-4 mb-2">
+            <div className="text-sm font-medium">{t('الأصناف', 'Lines')}</div>
+            <ScanButton
+              label={t('مسح صنف', 'Scan item')}
+              title={t('امسح باركود الصنف لإضافته تلقائيًا', 'Scan an item barcode to add it automatically')}
+              keepOpenAfterScan
+              onDetected={handleScan}
+            />
+          </div>
           {lines.map((line, i) => (
             <div key={i} className="flex gap-2 mb-2 items-center">
               <select className={inputClass} value={line.productId} onChange={(e) => updateLine(i, { productId: e.target.value })}>

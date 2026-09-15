@@ -15,6 +15,11 @@ import { AdjustmentsModule } from './adjustments/adjustments.module';
 import { CountsModule } from './counts/counts.module';
 import { AuditModule } from './audit/audit.module';
 import { ReportsModule } from './reports/reports.module';
+import { BarcodeModule } from './barcode/barcode.module';
+import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
+import { SalesOrdersModule } from './sales-orders/sales-orders.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
+import { CustomersModule } from './customers/customers.module';
 
 @Module({
   imports: [
@@ -34,6 +39,11 @@ import { ReportsModule } from './reports/reports.module';
     CountsModule,
     AuditModule,
     ReportsModule,
+    BarcodeModule,
+    SuppliersModule,
+    CustomersModule,
+    PurchaseOrdersModule,
+    SalesOrdersModule,
   ],
 })
 export class AppModule {}

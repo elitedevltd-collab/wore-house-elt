@@ -8,6 +8,7 @@ const PERMISSIONS = [
   ['products.create', 'products'],
   ['products.update', 'products'],
   ['products.delete', 'products'],
+  ['products.print_labels', 'products'],
   ['warehouses.view', 'warehouses'],
   ['warehouses.create', 'warehouses'],
   ['warehouses.update', 'warehouses'],
@@ -24,29 +25,45 @@ const PERMISSIONS = [
   ['users.create', 'users'],
   ['users.update', 'users'],
   ['audit.view', 'audit'],
+  ['partners.view', 'partners'],
+  ['partners.manage', 'partners'],
+  ['purchase_orders.view', 'purchase_orders'],
+  ['purchase_orders.manage', 'purchase_orders'],
+  ['sales_orders.view', 'sales_orders'],
+  ['sales_orders.manage', 'sales_orders'],
 ];
 
 const ROLE_PERMISSIONS: Record<string, string[] | 'ALL'> = {
   SUPER_ADMIN: 'ALL',
   ADMIN: 'ALL',
   WAREHOUSE_MANAGER: [
-    'products.view', 'products.create', 'products.update',
+    'products.view', 'products.create', 'products.update', 'products.print_labels',
     'warehouses.view', 'warehouses.create', 'warehouses.update',
     'stock.view', 'stock.receive', 'stock.issue', 'stock.transfer', 'stock.adjust', 'stock.count',
     'reports.view', 'reports.export', 'users.view', 'audit.view',
+    'partners.view', 'partners.manage', 'purchase_orders.view', 'purchase_orders.manage',
+    'sales_orders.view', 'sales_orders.manage',
   ],
   WAREHOUSE_OPERATOR: [
-    'products.view', 'warehouses.view',
+    'products.view', 'products.print_labels', 'warehouses.view',
     'stock.view', 'stock.receive', 'stock.issue', 'stock.transfer', 'stock.count',
+    'partners.view', 'purchase_orders.view', 'sales_orders.view',
   ],
   INVENTORY_CONTROLLER: [
-    'products.view', 'warehouses.view',
+    'products.view', 'products.print_labels', 'warehouses.view',
     'stock.view', 'stock.adjust', 'stock.count', 'reports.view',
+    'partners.view', 'purchase_orders.view', 'sales_orders.view',
   ],
-  PURCHASING: ['products.view', 'warehouses.view', 'stock.view', 'stock.receive', 'reports.view'],
-  SALES: ['products.view', 'warehouses.view', 'stock.view', 'stock.issue', 'reports.view'],
-  AUDITOR: ['products.view', 'warehouses.view', 'stock.view', 'reports.view', 'audit.view'],
-  VIEWER: ['products.view', 'warehouses.view', 'stock.view', 'reports.view'],
+  PURCHASING: [
+    'products.view', 'products.print_labels', 'warehouses.view', 'stock.view', 'stock.receive', 'reports.view',
+    'partners.view', 'partners.manage', 'purchase_orders.view', 'purchase_orders.manage', 'sales_orders.view',
+  ],
+  SALES: [
+    'products.view', 'warehouses.view', 'stock.view', 'stock.issue', 'reports.view',
+    'partners.view', 'partners.manage', 'sales_orders.view', 'sales_orders.manage', 'purchase_orders.view',
+  ],
+  AUDITOR: ['products.view', 'warehouses.view', 'stock.view', 'reports.view', 'audit.view', 'partners.view', 'purchase_orders.view', 'sales_orders.view'],
+  VIEWER: ['products.view', 'warehouses.view', 'stock.view', 'reports.view', 'partners.view'],
 };
 
 async function main() {
@@ -157,11 +174,34 @@ async function main() {
     },
   });
 
+  console.log('Seeding sample supplier/customer...');
+  const supplier = await prisma.supplier.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000004' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000004',
+      name: 'شركة التوريدات الغذائية المتحدة',
+      email: 'sales@united-supplies.example',
+      phone: '+966500000001',
+    },
+  });
+  const customer = await prisma.customer.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000005' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000005',
+      name: 'سوبر ماركت الواحة',
+      email: 'orders@alwaha-market.example',
+      phone: '+966500000002',
+    },
+  });
+
   console.log('Seed done.');
   console.log('----------------------------------------');
   console.log('Admin login: admin@warehouse.local / Admin@12345');
   console.log(`Warehouse: ${warehouse.name} (${warehouse.code}), Location: ${location.name}`);
   console.log(`Sample product: ${product.nameEn} (${product.sku})`);
+  console.log(`Sample supplier: ${supplier.name} · Sample customer: ${customer.name}`);
   console.log('----------------------------------------');
 }
 

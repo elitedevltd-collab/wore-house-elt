@@ -12,6 +12,11 @@ import { IssuesPage } from './pages/IssuesPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { CountsPage } from './pages/CountsPage';
 import { AuditPage } from './pages/AuditPage';
+import { LabelsPage } from './pages/LabelsPage';
+import { SuppliersPage } from './pages/SuppliersPage';
+import { CustomersPage } from './pages/CustomersPage';
+import { PurchaseOrdersPage } from './pages/PurchaseOrdersPage';
+import { SalesOrdersPage } from './pages/SalesOrdersPage';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -39,6 +44,11 @@ function AppRoutes() {
         <Route path="issues" element={<IssuesPage />} />
         <Route path="transfers" element={<TransfersPage />} />
         <Route path="counts" element={<CountsPage />} />
+        <Route path="labels" element={<LabelsPage />} />
+        <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
+        <Route path="sales-orders" element={<SalesOrdersPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="customers" element={<CustomersPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>
     </Routes>

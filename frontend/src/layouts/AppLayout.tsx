@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, PackagePlus, PackageMinus,
-  ArrowLeftRight, ClipboardList, ScanLine, FileBarChart, Moon, Sun, Globe, LogOut,
+  ArrowLeftRight, ClipboardList, ScanLine, FileBarChart, Moon, Sun, Globe, LogOut, Tags,
+  ShoppingCart, FileText, Truck, Users,
 } from 'lucide-react';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
@@ -9,12 +10,17 @@ import { useAuth } from '../context/AuthContext';
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, ar: 'الرئيسية', en: 'Dashboard' },
   { to: '/products', icon: Package, ar: 'المنتجات', en: 'Products' },
+  { to: '/labels', icon: Tags, ar: 'الملصقات', en: 'Labels' },
   { to: '/warehouses', icon: Warehouse, ar: 'المخازن', en: 'Warehouses' },
   { to: '/stock', icon: FileBarChart, ar: 'أرصدة المخزون', en: 'Stock Balance' },
   { to: '/receipts', icon: PackagePlus, ar: 'الاستلام', en: 'Receipts' },
   { to: '/issues', icon: PackageMinus, ar: 'الصرف', en: 'Issues' },
   { to: '/transfers', icon: ArrowLeftRight, ar: 'التحويلات', en: 'Transfers' },
   { to: '/counts', icon: ScanLine, ar: 'الجرد', en: 'Stock Counts' },
+  { to: '/purchase-orders', icon: ShoppingCart, ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  { to: '/sales-orders', icon: FileText, ar: 'أوامر البيع', en: 'Sales Orders' },
+  { to: '/suppliers', icon: Truck, ar: 'الموردين', en: 'Suppliers' },
+  { to: '/customers', icon: Users, ar: 'العملاء', en: 'Customers' },
   { to: '/audit', icon: ClipboardList, ar: 'سجل التدقيق', en: 'Audit Log' },
 ];
 
