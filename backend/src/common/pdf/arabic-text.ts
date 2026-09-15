@@ -95,7 +95,7 @@ function splitRuns(chars: string[]): Run[] {
     const effectiveType = ch === ' ' && currentType ? currentType : rawType;
     if (currentType === null) currentType = effectiveType;
     if (effectiveType !== currentType) {
-      runs.push({ type: currentType, text: currentText });
+      runs.push({ type: currentType as 'ar' | 'la', text: currentText });
       currentText = ch;
       currentType = effectiveType;
     } else {
