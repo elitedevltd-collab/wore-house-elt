@@ -20,6 +20,8 @@ import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { SalesOrdersModule } from './sales-orders/sales-orders.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { CustomersModule } from './customers/customers.module';
+import { InventoryModule } from './inventory/inventory.module';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 
 @Module({
   imports: [
@@ -44,6 +46,8 @@ import { CustomersModule } from './customers/customers.module';
     CustomersModule,
     PurchaseOrdersModule,
     SalesOrdersModule,
+    InventoryModule,
   ],
+  providers: [AuditInterceptor],
 })
 export class AppModule {}
