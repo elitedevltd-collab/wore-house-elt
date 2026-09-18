@@ -17,6 +17,7 @@ import { SuppliersPage } from './pages/SuppliersPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { PurchaseOrdersPage } from './pages/PurchaseOrdersPage';
 import { SalesOrdersPage } from './pages/SalesOrdersPage';
+import { InventoryControlPage } from './pages/InventoryControlPage';
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isAuthenticated } = useAuth();
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="audit" element={<AuditPage />} />
+        <Route path="inventory-control" element={<InventoryControlPage />} />
       </Route>
     </Routes>
   );
