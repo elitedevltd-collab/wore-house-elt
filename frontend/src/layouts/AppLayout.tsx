@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, PackagePlus, PackageMinus,
   ArrowLeftRight, ClipboardList, ScanLine, FileBarChart, Moon, Sun, Globe, LogOut, Tags,
-  ShoppingCart, FileText, Truck, Users,
+  ShoppingCart, FileText, Truck, Users, BellRing,
 } from 'lucide-react';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/labels', icon: Tags, ar: 'الملصقات', en: 'Labels' },
   { to: '/warehouses', icon: Warehouse, ar: 'المخازن', en: 'Warehouses' },
   { to: '/stock', icon: FileBarChart, ar: 'أرصدة المخزون', en: 'Stock Balance' },
+  { to: '/inventory-control', icon: BellRing, ar: 'مراقبة المخزون', en: 'Inventory Control' },
   { to: '/receipts', icon: PackagePlus, ar: 'الاستلام', en: 'Receipts' },
   { to: '/issues', icon: PackageMinus, ar: 'الصرف', en: 'Issues' },
   { to: '/transfers', icon: ArrowLeftRight, ar: 'التحويلات', en: 'Transfers' },
